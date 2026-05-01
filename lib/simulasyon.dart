@@ -40,19 +40,33 @@ class _SimulasyonSayfasiState extends State<SimulasyonSayfasi> {
     "ATSP0\r" //aracın iletişim dili , resetleme komutları felan
   ];
   int commandIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.connection != null) {
-      connection = widget.connection;
-      bagli = true;
-      startListener();
-      sendNextElmCommand();
-    }
+  
+@override
+void initState() {
+  super.initState();
+  if (widget.connection != null) {
+    connection = widget.connection;
+    bagli = true;
+    startListener();
+    sendNextElmCommand();
   }
 
-  // --- OBD Çekirdek Mantığı ---
+  // Simülasyon verisi - cihaz yokken test için
+  if (widget.connection == null) {
+    Timer.periodic(const Duration(milliseconds: 300), (t) {
+      if (!mounted) { t.cancel(); return; }
+      timerCount += 0.3;
+      setState(() {
+        double fakeRpm = 800 + (timerCount * 100) % 3000;
+        double fakeSpeed = (timerCount * 10) % 120;
+        rpmSpots.add(FlSpot(timerCount, fakeRpm));
+        speedSpots.add(FlSpot(timerCount, fakeSpeed));
+        if (rpmSpots.length > 30) rpmSpots.removeAt(0);
+        if (speedSpots.length > 30) speedSpots.removeAt(0);
+      });
+    });
+  }
+}
 
   void startListener() {
     // verileri yakaladığımız yer
@@ -109,26 +123,20 @@ class _SimulasyonSayfasiState extends State<SimulasyonSayfasi> {
     }
   }
 
-  void startPidLoop() {
-    // burda sürekli aractan veri alıyoruz sürekli akış var
-    pidTimer = Timer.periodic(const Duration(milliseconds: 200), (Timer t) {
-      if (!bagli) {
-        t.cancel();
-        return;
-      }
-      switch (t.tick % 3) {
-        case 0:
-          _send("010C\r");
-          break; // RPM
-        case 1:
-          _send("010D\r");
-          break; // Speed
-        case 2:
-          _send("0105\r");
-          break; // Temp
-      }
-    });
-  }
+void startPidLoop() {
+  pidTimer = Timer.periodic(const Duration(milliseconds: 200), (Timer t) {
+    if (!bagli) {
+      t.cancel();
+      return;
+    }
+    timerCount += 0.2; // Buraya taşındı, her tick'te artar
+    switch (t.tick % 3) {
+      case 0: _send("010C\r"); break;
+      case 1: _send("010D\r"); break;
+      case 2: _send("0105\r"); break;
+    }
+  });
+}
 
   void _parseData(String raw) {
     //araçtan gelen karmaşık kodları sürücünün anlayabileceği şekile döndürür
@@ -411,7 +419,10 @@ class _SimulasyonSayfasiState extends State<SimulasyonSayfasi> {
   }
 
   Widget _grafikBolumu(
-      String title, List<FlSpot> spots, Color color, double maxY) {
+    String title, List<FlSpot> spots, Color color, double maxY) {
+  
+  // En az 2 nokta yoksa grafik çizme
+  if (spots.length < 2) {
     return Container(
       height: 180,
       padding: const EdgeInsets.all(16),
@@ -419,39 +430,59 @@ class _SimulasyonSayfasiState extends State<SimulasyonSayfasi> {
         color: Colors.white.withOpacity(0.03),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Expanded(
-            child: LineChart(
-              LineChartData(
-                minY: 0,
-                maxY: maxY,
-                gridData: const FlGridData(show: false),
-                titlesData: const FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: color,
-                    barWidth: 2,
-                    dotData: const FlDotData(show: false),
-                    belowBarData:
-                        BarAreaData(show: true, color: color.withOpacity(0.1)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+      child: Center(
+        child: Text("Veri bekleniyor...",
+            style: TextStyle(color: color.withOpacity(0.5))),
       ),
     );
   }
+
+  double minX = spots.first.x;
+  double maxX = spots.last.x;
+  if (maxX <= minX) maxX = minX + 1; // sıfır aralık koruması
+
+  return Container(
+    height: 180,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.03),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: TextStyle(
+                color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        Expanded(
+          child: LineChart(
+            LineChartData(
+              minX: minX,
+              maxX: maxX,
+              minY: 0,
+              maxY: maxY,
+              gridData: const FlGridData(show: false),
+              titlesData: const FlTitlesData(show: false),
+              borderData: FlBorderData(show: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: color,
+                  barWidth: 2,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                      show: true, color: color.withOpacity(0.1)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _altButonlar() {
     return Container(

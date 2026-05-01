@@ -7,7 +7,7 @@ void main() async {
   // Flutter binding'in hazır olduğundan emin oluyoruz
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Uygulama başlamadan önce gerekli izinleri istiyoruz
+  // Uygulama ba   şlamadan önce gerekli izinleri istiyoruz
   await _izinleriIste();
 
   runApp(const MyApp());
